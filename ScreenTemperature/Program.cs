@@ -1,14 +1,14 @@
 ﻿using ScreenTemperature;
-using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
+using Tesseract;
+using System.Text.RegularExpressions;
+using NLog;
 
-MyLogger mylogger = new MyLogger();
-mylogger.SetConsole();
-var logger = mylogger.Logger;
+var logger = LogManager.GetCurrentClassLogger();
 
+// Function for capturing application image
 Bitmap CaptureApplication(string procName)
 {
     var proc = Process.GetProcessesByName(procName)[0];
@@ -23,34 +23,79 @@ Bitmap CaptureApplication(string procName)
     {
         graphics.CopyFromScreen(rect.left, rect.top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
     }
-    logger.Info("Image captured, saving");
-    bmp.Save("test.png", ImageFormat.Png);
     return bmp;
 }
 
-string proc = "mspaint";
-logger.Info($"Getting proccess by name: \"{proc}\"");
+logger.Info("Program started!");
+logger.Info("initialization data...");
 
-var processess = Process.GetProcessesByName(proc);
-logger.Debug($"Found {processess.Length}");
-if (processess.Length == 0)
+string proc = "HD-player";
+string imgFile = "temp_image.png";
+Rectangle trim = new Rectangle() { X = 150, Y = 140, Width = 150, Height = 50 };
+Regex findTempReg = new Regex(@"-?[0-4]?\d\.\d"); // -?[0-4]?\d\.\d  -?\d{1,2}\.\d
+string zabbixServer = "10.100.1.8";
+string zabbixHostname = "\"Server_room_temperature_26k_402\"";
+string zabbixKey = "temperature_c";
+
+logger.Debug($"Process to find: {proc}");
+logger.Debug($"Tempfile for image: {imgFile}");
+logger.Debug($"Trim image bounds: {trim.ToString()}");
+logger.Debug($"Regexp to find temperature in text: \"{findTempReg}\"");
+logger.Debug($"Zabbix server - {zabbixServer}");
+logger.Debug($"Zabbix host - {zabbixHostname}");
+logger.Debug($"Zabbix key - {zabbixKey}");
+
+try
 {
-    logger.Error("Process not found");
-    return;
+    while (true)
+    {
+        logger.Info($"Getting proccess by name: \"{proc}\"");
+        // Getting processess list
+        var processess = Process.GetProcessesByName(proc);
+        logger.Debug($"Found {processess.Length}");
+        if (processess.Length == 0)
+        {
+            logger.Error("Process not found");
+            await Task.Delay(60000);
+            continue;
+        }
+        // taking image
+        var image = CaptureApplication(proc);
+
+        logger.Info("Image captured");
+        logger.Debug("Triming image");
+        // triming image
+        image = image.Clone(trim, image.PixelFormat);
+        image.Save(imgFile);
+        // search text on image
+        var engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default);
+        string res = engine.Process(Pix.LoadFromFile(imgFile)).GetText();
+
+        logger.Debug($"Detected text on image: {res.Replace('\n', ' ')}");
+
+        var matches = findTempReg.Matches(res);
+
+        logger.Debug($"Matched {matches.Count} regexp entries");
+
+        if (matches.Count == 0)
+        {
+            logger.Error("Text not found");
+            await Task.Delay(60000);
+            continue;
+        }
+        res = matches[0].Value;
+        // send data to zabbix server
+        logger.Info($"Detected text: {res}");
+        logger.Debug("Sending data to Zabbix");
+        Process.Start(@"C:\Program Files\Zabbix Agent\zabbix_sender", $" -z {zabbixServer} -s {zabbixHostname} -k {zabbixKey} -o {res}");
+        logger.Debug("Waiting one minute...");
+
+        await Task.Delay(60000);
+    }
 }
-
-var image = CaptureApplication(proc);
-
-logger.Debug("Triming image");
-image = image.Clone(new Rectangle(100, 250, 100, 50), image.PixelFormat);
-image.Save("test2.png");
-
-
-/*
- * 1. Получаем картинку окна
- * 2. Обрезаем нужный фрагмент
- * 3. На фрагменте найти текст
- * 4. Сбор данных в заббикс. Либо вручную отправлять в заббикс, либо агентом собирать нужный файл
- */
-
-
+catch (Exception e)
+{
+    logger.Fatal($"Exception: {e.Message}");
+    logger.Fatal($"Source: {e.Source}");
+    logger.Fatal($"Stack trace: {e.StackTrace}");
+}
