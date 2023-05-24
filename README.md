@@ -8,5 +8,5 @@ Need to specify:
 * Regular expression for search in detected text
 
 Example:
-![Example](https://github.com/ctg135/temperature-from-app/master/images/demo.png)
+![Example](https://github.com/ctg135/temperature-from-app/blob/master/images/demo.png?raw=true)
 
