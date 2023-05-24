@@ -31,7 +31,7 @@ logger.Info("initialization data...");
 
 string proc = "HD-player";
 string imgFile = "temp_image.png";
-Rectangle trim = new Rectangle() { X = 150, Y = 140, Width = 150, Height = 50 };
+Rectangle trim = new Rectangle() { X = 100, Y = 150, Width = 250, Height = 100 };
 Regex findTempReg = new Regex(@"-?[0-4]?\d\.\d"); // -?[0-4]?\d\.\d  -?\d{1,2}\.\d
 string zabbixServer = "10.100.1.8";
 string zabbixHostname = "\"Server_room_temperature_26k_402\"";
